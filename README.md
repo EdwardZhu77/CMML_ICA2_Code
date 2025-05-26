@@ -1,4 +1,4 @@
-# A Comparative Benchmark of totalVI, Seurat WNN, and PCA for CITE-seq Data Integration (Constructing brfore Deadline)
+# A Comparative Benchmark of totalVI, Seurat WNN, and PCA for CITE-seq Data Integration (Constructing before Deadline ...)
 
 This repository contains the code, processed data, and key results for the comparative benchmark study evaluating totalVI, Seurat WNN, and Principal Component Analysis (PCA) for integrating single-cell CITE-seq RNA and protein data. The primary analysis was performed on the 10x Genomics 10k PBMCs from a Healthy Donor CITE-seq dataset.
 
