@@ -1,66 +1,113 @@
-# CMML_ICA2_Code
+# A Comparative Benchmark of totalVI, Seurat WNN, and PCA for CITE-seq Data Integration (Constructing brfore Deadline)
 
-/content/drive/My Drive/CMML_ICA2/  (Main Project Directory)  
+This repository contains the code, processed data, and key results for the comparative benchmark study evaluating totalVI, Seurat WNN, and Principal Component Analysis (PCA) for integrating single-cell CITE-seq RNA and protein data. The primary analysis was performed on the 10x Genomics 10k PBMCs from a Healthy Donor CITE-seq dataset.
+
+**Author:** EdwardZhu77
+**Date:** May 2024
+**Course/Context:** CMML ICA2 (Computational Methods for Multi-modal Learning - In-Course Assessment 2)
+
+## Abstract
+
+Integrating the complementary RNA and surface protein data of CITE-seq presents unique challenges. This study benchmarks three widely used methods on PBMC10k data. PCA and totalVI excelled in aligning unsupervised clusters with ground truth annotations. totalVI uniquely enhanced RNA-protein Spearman correlations, crucial for biological insight. Seurat WNN provided better UMAP visual separation and cluster stability. Our findings reveal method-specific strengths, offering guidance for selecting appropriate tools based on analytical objectives.
+
+## Project Structure
+
+The repository is organized as follows:
+
+CMML_ICA2_Code/  
 │  
-├── Data_Preprocessing_Outputs/  (Changed "Filter/" to be more descriptive)  
-│   │  
-│   ├── figures_pbmc10k_mtx/  (QC figures from preprocessing)  
-│   │   ├── qc_metrics_before_filtering_mtx.png  # QC metrics distribution BEFORE filtering  
-│   │   └── qc_metrics_after_filtering_mtx.png   # QC metrics distribution AFTER filtering  
-│   │  
-│   └── data_pbmc10k_mtx/  (Data related to the PBMC10k MTX-based preprocessing)  
-│       │  
-│       ├── raw/  (Original downloaded data)  
-│       │   ├── truth_10X10k.csv  # Ground truth cell type labels for PBMC10k  
-│       │   ├── pbmc_10k_protein_v3_filtered_feature_bc_matrix.tar.gz  # Downloaded 10x archive  
-│       │   └── pbmc_10k_protein_v3_filtered_feature_bc_matrix/  # Extracted 10x MTX folder  
-│       │       ├── matrix.mtx.gz      # RNA + ADT counts (sparse matrix)  
-│       │       ├── features.tsv.gz    # Feature names (genes and proteins) and types  
-│       │       └── barcodes.tsv.gz    # Cell barcodes  
-│       │
-│       └── processed/  (Data after your unified Python preprocessing script)  
-│           ├── pbmc10k_cite_seq_processed_for_totalVI.h5ad  # Main processed AnnData/MuData for totalVI input (contains RNA raw counts, protein raw counts, HVG info, ground truth labels, etc.)  
-│           └── pbmc10k_for_SeuratPCA_preprocessed/  (Data specifically formatted for Seurat and PCA)  
-│               ├── protein_counts_raw.csv          # Raw protein counts (cells x proteins)  
-│               ├── cell_metadata_filtered.csv      # Cell metadata including ground truth and QC stats  
-│               └── rna_hvg_counts_mtx/             # Raw RNA counts for HVGs in MTX format  
-│                   ├── matrix.mtx.gz  
-│                   ├── features.tsv.gz             # HVG gene names  
-│                   └── barcodes.tsv.gz  
+├── Data_Preprocessing_Outputs/  
+│ ├── figures_pbmc10k_mtx/ # QC figures from preprocessing (before/after filtering)  
+│ └── data_pbmc10k_mtx/  
+│ ├── raw/ # Original downloaded 10x Genomics data and ground truth  
+│ └── processed/ # Data after unified Python preprocessing  
+│ ├── pbmc10k_cite_seq_processed_for_totalVI.h5ad # Processed AnnData/MuData for totalVI  
+│ └── pbmc10k_for_SeuratPCA_preprocessed/ # Data formatted for Seurat & PCA inputs  
 │  
-├── Model_Outputs/  (Directory for outputs from each integration method)  
-│   │  
-│   ├── totalVI_pbmc_model/  (Results from totalVI.ipynb)  
-│   │   ├── totalVI_leiden_labels.csv          # Cell barcodes and totalVI Leiden cluster labels  
-│   │   ├── totalVI_denoised_rna_hvg_from_layer.csv  # Denoised/normalized RNA expression (HVGs) by totalVI  
-│   │   ├── totalVI_denoised_protein_from_layer.csv # Denoised/corrected Protein expression by totalVI  
-│   │   └── pbmc10k_mdata_totalVI_benchmark_ready.h5mu # The FINAL MuData object from totalVI run, containing latent space, UMAP, Leiden, denoised layers, and corrected protein var_names. THIS IS KEY.  
-│   │   # Optional: other intermediate .h5mu files or model.pt could be here too.  
-│   │   # You are right, pbmc10k_mdata_totalVI_benchmark_ready.h5mu should be the most comprehensive.  
-│   │  
-│   ├── Seurat_pbmc_model/  (Results from Seurat.Rmd, exported as CSVs)  
-│   │   ├── seurat_wnn_umap_coordinates.csv    # UMAP coordinates from Seurat WNN (cells x UMAP_dims)  
-│   │   ├── seurat_wnn_leiden_labels.csv     # Cell barcodes and Seurat WNN Leiden cluster labels  
-│   │   ├── seurat_processed_rna_hvg_sct_data.csv # Processed RNA expression (e.g., SCTransform data for HVGs)  
-│   │   ├── seurat_processed_adt_clr_data.csv  # Processed ADT expression (e.g., CLR normalized)  
-│   │   └── seurat_cell_metadata_for_benchmark.csv # Relevant cell metadata from Seurat object (includes GT, Leiden labels from Seurat, WNN weights etc.)  
-│   │   ├── seurat_clustering_stability_pairwise_aris.csv  
-│   │   ├── seurat_clustering_stability_summary.csv  
-│   │   # Optional: pbmc10k_seurat_wnn_processed_final.rds (the full Seurat object)  
-│   │  
-│   └── pca_pbmc_model/  (Results from PCA.ipynb)  
-│       ├── pca_scaled_rna_hvg.csv             # Scaled RNA expression (HVGs) used for PCA input concatenation  
-│       ├── pca_scaled_protein.csv           # Scaled Protein expression used for PCA input concatenation  
-│       ├── pca_leiden_labels.csv            # Cell barcodes and PCA-based Leiden cluster labels  
-│       ├── pca_latent_space.csv             # PCA latent space (cell x PCs)  
-│       └── pbmc10k_pca_results.h5ad         # AnnData object containing PCA, UMAP, and Leiden results from PCA workflow  
+├── Model_Outputs/  
+│ ├── totalVI_pbmc_model/ # Results and key outputs from the totalVI model run  
+│ │ └── pbmc10k_mdata_totalVI_benchmark_ready.h5mu # FINAL MuData with latent space, UMAP, denoised data  
+│ ├── Seurat_pbmc_model/ # Results and key outputs from the Seurat WNN model run  
+│ └── pca_pbmc_model/ # Results and key outputs from the PCA model run  
+│ └── pbmc10k_pca_results.h5ad # AnnData with PCA, UMAP, and Leiden results  
 │  
-├── Benchmark_Analysis/  (Directory for the final benchmark notebook and its outputs)  
-│   └── (This is where your Benchmark.ipynb's figures and summary tables will be saved)  
+├── Benchmark_Analysis/ # Notebook/script for final benchmark metric calculations, figure generation, and summary tables  
+│ ├── Benchmark_Metrics_and_Figures.ipynb # (Example name)  
+│ └── figures/ # Figures generated by the benchmark analysis (Fig1, Fig2, SFig1, SFig2)  
 │  
-└── Notebooks_and_Scripts/ (Directory for your code)  
-    ├── Data_Preprocessing.ipynb  # Your Python script for initial data download and preprocessing  
-    ├── totalVI.ipynb             # Python script for running totalVI  
-    ├── PCA_Integration.ipynb       # Python script for running PCA-based integration  
-    ├── Seurat_WNN.Rmd            # R Markdown script for running Seurat WNN  
-    └── Benchmark_Analysis.ipynb  # Python script for final benchmark comparisons and visualizations  
+└── Notebooks_and_Scripts/  
+├── Data_Preprocessing.ipynb # Python notebook for data download, QC, and initial processing  
+├── totalVI.ipynb # Python notebook for running totalVI  
+├── Seurat_WNN.Rmd # R Markdown script for running Seurat WNN  
+└── PCA_Integration.ipynb # Python notebook for running the PCA-based integration  
+
+
+**Note on Data:**
+*   Raw data from 10x Genomics can be downloaded from [10x Genomics Datasets](https://support.10xgenomics.com/single-cell-gene-expression/datasets/3.0.0/pbmc_10k_protein_v3).
+*   Ground truth annotations were obtained from the supplementary resource of Wang et al., 2020 (BREM-SC), accessible [here](https://github.com/tarot0410/BREMSC/blob/master/data/RealData/10X10k/truth_10X10k.csv).
+*   Due to file size, only key processed data files necessary for reproducing the benchmark analysis might be included directly in this repository. Paths in scripts might need adjustment if running locally.
+
+## Workflow Overview
+
+1.  **Data Download and Preprocessing (`Notebooks_and_Scripts/Data_Preprocessing.ipynb`):**
+    *   Downloads the raw 10x Genomics PBMC10k CITE-seq dataset.
+    *   Performs quality control (QC) filtering on cells and genes for both RNA and ADT modalities.
+    *   Normalizes RNA data, identifies highly variable genes (HVGs).
+    *   Maps ground truth cell type labels.
+    *   Saves the primary processed AnnData/MuData object (`pbmc10k_cite_seq_processed_for_totalVI.h5ad`).
+    *   Exports data in formats suitable for totalVI, Seurat, and PCA inputs.
+
+2.  **Integration Model Implementation:**
+    *   **totalVI (`Notebooks_and_Scripts/totalVI.ipynb`):**
+        *   Loads processed data into a MuData object.
+        *   Configures and trains the totalVI model using raw HVG counts and raw protein counts.
+        *   Generates a 20-dimensional joint latent space and denoised RNA/protein expressions.
+        *   Outputs are saved in `Model_Outputs/totalVI_pbmc_model/`.
+    *   **Seurat WNN (`Notebooks_and_Scripts/Seurat_WNN.Rmd`):**
+        *   Loads exported raw HVG RNA and protein counts into R.
+        *   Processes RNA data (SCTransform, PCA) and ADT data (CLR normalization, scaling, PCA).
+        *   Constructs a Weighted Nearest Neighbor (WNN) graph.
+        *   Performs UMAP embedding and Leiden clustering.
+        *   Outputs are saved in `Model_Outputs/Seurat_pbmc_model/`.
+    *   **PCA (`Notebooks_and_Scripts/PCA_Integration.ipynb`):**
+        *   Log1p-transforms and scales raw HVG RNA and protein counts.
+        *   Concatenates scaled matrices and performs PCA (50 components).
+        *   Performs UMAP embedding and Leiden clustering.
+        *   Outputs are saved in `Model_Outputs/pca_pbmc_model/`.
+
+3.  **Benchmark Analysis (`Benchmark_Analysis/Benchmark_Metrics_and_Figures.ipynb`):**
+    *   Loads the outputs from each integration method.
+    *   Calculates quantitative benchmark metrics:
+        *   Clustering Concordance (ARI & NMI)
+        *   Cell Type Separation (cASW)
+        *   Clustering Stability (Mean Pairwise ARI)
+        *   RNA-Protein Correlation (Spearman and Pearson)
+    *   Generates figures and summary tables presented in the report.
+
+## Key Software and Versions
+
+A detailed list of software versions is available in the "Software Versions" section of the Supplementary Materials accompanying the main report. Key tools include:
+
+*   Python (v3.11.12)
+*   Scanpy (v1.11.1)
+*   MuData (v0.3.1)
+*   scvi-tools (v1.3.1)
+*   Pandas (v2.2.2)
+*   NumPy (v2.0.2)
+*   scikit-learn (v1.6.0)
+*   SciPy (v1.15.3)
+*   R (v4.3.1)
+*   Seurat (v4.3.0.1)
+*   Matplotlib (v3.7)
+*   Seaborn (v0.13.2)
+
+## Results and Discussion
+
+For a detailed presentation of the results, their interpretation, and discussion of method-specific strengths, limitations, and future directions, please refer to the main project report and its accompanying supplementary materials.
+
+Key findings include:
+*   PCA and totalVI excel at aligning unsupervised clusters with ground truth.
+*   totalVI uniquely enhances RNA-protein Spearman correlations.
+*   Seurat WNN provides superior UMAP visual separation and cluster stability.
+
+The choice of method should be guided by the primary analytical objective.
