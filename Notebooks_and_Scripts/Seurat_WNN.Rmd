@@ -1,0 +1,255 @@
+---
+title: "PBMC10k CITE-seq Integration with Seurat WNN"
+output: pdf_document
+date: "`r Sys.Date()`"
+---
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+library(reticulate)
+use_python("//usr2/collab/zzhu2/miniconda3/envs/seurat/bin/python", required = TRUE)
+# Load necessary libraries
+# Ensure these are installed in your R environment:
+# install.packages(c("Seurat", "dplyr", "ggplot2", "Matrix", "data.table"))
+library(Seurat)
+library(dplyr)
+library(ggplot2)
+library(Matrix)
+library(data.table) # For fread, often faster for large CSVs
+```
+
+1. Load Preprocessed Data
+
+We will load the RNA (HVG raw counts from MTX format), Protein (raw counts from CSV), and Cell Metadata (including ground truth labels from CSV) that were prepared in the Python preprocessing script.
+```{r}
+# --- Define relative paths to input files (assuming current working directory is correct) ---
+rna_mtx_input_dir <- "./rna_hvg_counts_mtx/" # Contains matrix.mtx.gz, barcodes.tsv.gz, features.tsv.gz
+protein_csv_input_path <- "./protein_counts_raw.csv"
+metadata_csv_input_path <- "./cell_metadata_filtered.csv"
+
+# Output directory for Seurat results (will be created in the current working directory)
+seurat_output_data_dir <- "./seurat_wnn_outputs/"
+seurat_output_figure_dir <- "./seurat_wnn_figures/"
+dir.create(seurat_output_data_dir, showWarnings = FALSE)
+dir.create(seurat_output_figure_dir, showWarnings = FALSE)
+
+print(paste("Reading RNA data from:", rna_mtx_input_dir))
+print(paste("Reading Protein data from:", protein_csv_input_path))
+print(paste("Reading Metadata from:", metadata_csv_input_path))
+print(paste("Seurat WNN outputs will be saved to:", seurat_output_data_dir))
+print(paste("Seurat WNN figures will be saved to:", seurat_output_figure_dir))
+```
+```{r}
+# --- 1. Load RNA data (HVG raw counts) ---
+# Read10X can read the folder containing matrix.mtx.gz, barcodes.tsv.gz, features.tsv.gz
+rna_counts_matrix <- Read10X(data.dir = rna_mtx_input_dir, gene.column = 2) # gene.column = 2 if features.tsv has ID then symbol
+# Check dimensions
+print(paste("RNA counts matrix loaded with dimensions:", paste(dim(rna_counts_matrix), collapse=" x ")))
+
+
+# --- 2. Load Protein data (raw counts) ---
+protein_counts_df <- fread(protein_csv_input_path, data.table = FALSE) # Using fread for speed
+# First column is cell barcode, set as rownames
+rownames(protein_counts_df) <- protein_counts_df[,1]
+protein_counts_df <- protein_counts_df[,-1]
+# Transpose because Seurat expects features (proteins) x cells for CreateAssayObject
+protein_counts_matrix <- as.matrix(protein_counts_df) %>% t() %>% as(Class = "dgCMatrix")
+print(paste("Protein counts matrix loaded and transposed with dimensions:", paste(dim(protein_counts_matrix), collapse=" x ")))
+print("First 5 protein names from matrix:")
+print(head(rownames(protein_counts_matrix)))
+# --- 3. Load Cell Metadata ---
+cell_metadata_df <- read.csv(metadata_csv_input_path, row.names = 1) # First column is cell barcode
+print(paste("Cell metadata loaded with dimensions:", paste(dim(cell_metadata_df), collapse=" x ")))
+print("Head of cell metadata:")
+print(head(cell_metadata_df))
+if ("ground_truth_cell_type" %in% colnames(cell_metadata_df)) {
+  print("Ground truth cell type distribution in loaded metadata:")
+  print(table(cell_metadata_df$ground_truth_cell_type, useNA = "ifany"))
+} else {
+  warning("'ground_truth_cell_type' not found in loaded metadata!")
+}
+```
+
+```{r}
+# --- Create Initial Seurat Object with RNA data ---
+# Subset to common cells if necessary, though preprocessing should have aligned them.
+# For now, assume RNA matrix has all cells we need.
+pbmc_seu <- CreateSeuratObject(counts = rna_counts_matrix, project = "PBMC10k_Seurat", meta.data = cell_metadata_df)
+# Note: cell_metadata_df should have rownames matching colnames(rna_counts_matrix)
+# If Read10X reorders barcodes, we might need to align metadata after object creation.
+# Let's check and align:
+common_cells_seu <- intersect(colnames(pbmc_seu), rownames(cell_metadata_df))
+pbmc_seu <- pbmc_seu[, common_cells_seu]
+pbmc_seu@meta.data <- cell_metadata_df[common_cells_seu, ] # Ensure metadata matches exactly
+
+print("Initial Seurat object created with RNA and metadata:")
+print(pbmc_seu)
+
+
+# --- Add Protein data as an ADT Assay ---
+# Ensure protein matrix only contains common cells and in the correct order
+protein_counts_matrix_aligned <- protein_counts_matrix[, common_cells_seu]
+pbmc_seu[["ADT"]] <- CreateAssayObject(counts = protein_counts_matrix_aligned)
+
+print("ADT assay added to Seurat object:")
+print(pbmc_seu)
+print(pbmc_seu@assays)
+```
+
+2. Seurat WNN Preprocessing and Integration
+
+We will follow a standard Seurat WNN workflow: normalize RNA and ADT, find variable features for RNA, scale RNA, run PCA on RNA, run LSI (or PCA) on ADT, and then find multi-modal neighbors and run UMAP.
+```{r}
+# --- Normalize RNA Data ---
+DefaultAssay(pbmc_seu) <- "RNA"
+# Using SCTransform is often recommended for RNA in WNN workflows as it handles technical noise well.
+# Or LogNormalize + FindVariableFeatures + ScaleData
+# Let's use SCTransform for a more robust RNA representation for WNN.
+pbmc_seu <- SCTransform(pbmc_seu, verbose = FALSE) # SCTransform also finds variable features
+print("RNA data normalized using SCTransform.")
+
+# --- Normalize ADT Data ---
+DefaultAssay(pbmc_seu) <- "ADT"
+# CLR normalization is standard for ADT
+pbmc_seu <- NormalizeData(pbmc_seu, normalization.method = "CLR", margin = 2, verbose = FALSE)
+# Scale ADT features (all of them, as WNN will use them)
+pbmc_seu <- ScaleData(pbmc_seu, features = rownames(pbmc_seu), verbose = FALSE)
+print("ADT data normalized using CLR and scaled.")
+```
+
+```{r}
+# --- Dimensionality Reduction for each modality ---
+# For RNA (SCT assay already has variable features selected by SCTransform)
+DefaultAssay(pbmc_seu) <- "SCT" # Use the SCT assay for PCA
+pbmc_seu <- RunPCA(pbmc_seu, npcs = 50, verbose = FALSE) # Using 50 PCs like other methods
+print("PCA run on SCT assay (RNA).")
+
+# For ADT
+DefaultAssay(pbmc_seu) <- "ADT"
+# We can use all ADT features for PCA, or LSI if preferred (LSI is more for ATAC-seq)
+# For CITE-seq ADT, RunPCA on the scaled ADT data is common.
+# Since there are only ~17 proteins, we can use almost all components or a smaller number.
+n_adt_features <- nrow(pbmc_seu@assays$ADT)
+pbmc_seu <- RunPCA(pbmc_seu, features = rownames(pbmc_seu), # Use all ADT features
+                   npcs = min(15, n_adt_features - 1), # Use fewer PCs for ADT, e.g. all but one
+                   reduction.name = "apca", reduction.key = "apca_", verbose = FALSE)
+print("PCA run on ADT assay (named 'apca').")
+```
+
+```{r}
+# --- Weighted Nearest Neighbor (WNN) Analysis ---
+print("Running FindMultiModalNeighbors (WNN)...")
+pbmc_seu <- FindMultiModalNeighbors(
+  pbmc_seu, reduction.list = list("pca", "apca"), # Reductions from RNA (SCT's PCA) and ADT
+  dims.list = list(1:50, 1:min(15, n_adt_features - 1)), # Corresponding dimensions to use
+  modality.weight.name = "RNA.weight", # Name for the RNA weight in metadata
+  verbose = TRUE
+)
+
+print("WNN graph constructed.")
+
+# --- UMAP and Clustering based on WNN ---
+# The WNN graph is stored as 'wsnn' (weighted SNN)
+print("Running UMAP on WNN graph...")
+pbmc_seu <- RunUMAP(pbmc_seu, nn.name = "weighted.nn", # nn.name from FindMultiModalNeighbors output
+                    reduction.name = "wnn.umap", reduction.key = "wnnUMAP_", verbose = FALSE)
+
+print("UMAP based on WNN calculated (stored as 'wnn.umap').")
+```
+
+```{r}
+# Clustering using the WNN graph
+seurat_wnn_leiden_resolution <- 0.5 # Consistent with other methods
+print(paste("Performing Leiden clustering on WNN graph with resolution", seurat_wnn_leiden_resolution, "..."))
+pbmc_seu <- FindClusters(pbmc_seu, graph.name = "wsnn", # graph.name from FindMultiModalNeighbors output
+                         algorithm = 4, # 4 for Leiden
+                         resolution = seurat_wnn_leiden_resolution,
+                         verbose = FALSE)
+# Cluster IDs are stored in pbmc_seu$seurat_clusters by default, or wsnn_res.X if specified
+# Let's rename it for clarity
+pbmc_seu$leiden_wnn <- pbmc_seu@meta.data[[paste0("wsnn_res.", seurat_wnn_leiden_resolution)]]
+
+print("Leiden clustering on WNN graph performed.")
+print("Cluster distribution (WNN Leiden):")
+print(table(pbmc_seu$leiden_wnn))
+
+print("Seurat object after WNN, UMAP, and Clustering:")
+print(pbmc_seu)
+```
+3.Save Core Outputs for Benchmark
+
+We will save WNN UMAP coordinates, Leiden cluster labels, processed RNA (SCT) expression, processed ADT (CLR) expression, and essential metadata.
+```{r}
+print("--- Saving Seurat WNN Core Outputs for Benchmark as CSV ---")
+
+# --- 1. WNN UMAP coordinates ---
+print("Saving WNN UMAP coordinates...")
+wnn_umap_coords <- Embeddings(pbmc_seu, reduction = "wnn.umap")
+wnn_umap_coords_df <- as.data.frame(wnn_umap_coords)
+colnames(wnn_umap_coords_df) <- paste0("WNN_UMAP_", 1:ncol(wnn_umap_coords_df))
+# Add cell barcodes as the first column for easy merge in Python
+wnn_umap_coords_df <- cbind(cell_barcode = rownames(wnn_umap_coords_df), wnn_umap_coords_df)
+write.csv(wnn_umap_coords_df, 
+          file.path(seurat_output_data_dir, "seurat_wnn_umap_coordinates.csv"), 
+          row.names = FALSE, quote = FALSE)
+print(paste("  Saved to:", file.path(seurat_output_data_dir, "seurat_wnn_umap_coordinates.csv")))
+
+# --- 2. Seurat WNN Leiden Cluster Labels ---
+# Using the 'leiden_wnn' column you created.
+print("Saving WNN Leiden cluster labels...")
+seurat_leiden_labels_df <- data.frame(
+  cell_barcode = rownames(pbmc_seu@meta.data),
+  leiden_wnn_seurat = pbmc_seu$leiden_wnn 
+)
+write.csv(seurat_leiden_labels_df, 
+          file.path(seurat_output_data_dir, "seurat_wnn_leiden_labels.csv"), 
+          row.names = FALSE, quote = FALSE)
+print(paste("  Saved to:", file.path(seurat_output_data_dir, "seurat_wnn_leiden_labels.csv")))
+
+# --- 3. Processed Expression matrices for RNA-Protein Correlation ---
+# RNA: Using SCTransform 'data' slot for HVGs (or all features if HVGs not specifically subsetted in 'data')
+print("Saving processed RNA expression (SCT)...")
+DefaultAssay(pbmc_seu) <- "SCT"
+# Using VariableFeatures from SCT assay. SCTransform populates this.
+hvg_sct_features <- VariableFeatures(pbmc_seu, assay = "SCT")
+if (length(hvg_sct_features) == 0) {
+    print("  Warning: No variable features explicitly found for SCT assay. Using all features from 'data' slot.")
+    hvg_sct_features <- rownames(GetAssayData(pbmc_seu, assay = "SCT", slot = "data"))
+}
+processed_rna_seurat_for_export <- as.matrix(GetAssayData(pbmc_seu, assay = "SCT", slot = "data")[hvg_sct_features, ])
+rna_csv_path <- file.path(seurat_output_data_dir, "seurat_processed_rna_hvg_sct_data.csv")
+write.csv(processed_rna_seurat_for_export, rna_csv_path, quote = FALSE, row.names = TRUE)
+print(paste("  Saved to:", rna_csv_path))
+
+# ADT: Using CLR normalized data from 'data' slot
+print("Saving processed ADT expression (CLR)...")
+DefaultAssay(pbmc_seu) <- "ADT"
+processed_adt_seurat_for_export <- as.matrix(GetAssayData(pbmc_seu, assay = "ADT", slot = "data"))
+adt_csv_path <- file.path(seurat_output_data_dir, "seurat_processed_adt_clr_data.csv")
+write.csv(processed_adt_seurat_for_export, adt_csv_path, quote = FALSE, row.names = TRUE)
+print(paste("  Saved to:", adt_csv_path))
+
+# --- 4. Save essential Cell Metadata (including ground truth and WNN weights) ---
+print("Saving essential cell metadata...")
+# Select columns explicitly based on your provided colnames output
+columns_to_select <- c("ground_truth_cell_type", "leiden_wnn", 
+                       "nCount_RNA", "nFeature_RNA", "percent.mt", 
+                       "nCount_ADT", "nFeature_ADT", 
+                       "SCT.weight", "ADT.weight") # Using actual weight names
+# Ensure all selected columns actually exist to prevent errors
+columns_to_select_existing <- intersect(columns_to_select, colnames(pbmc_seu@meta.data))
+essential_metadata <- pbmc_seu@meta.data[, columns_to_select_existing, drop = FALSE]
+
+metadata_export_path <- file.path(seurat_output_data_dir, "seurat_cell_metadata_for_benchmark.csv")
+write.csv(essential_metadata, metadata_export_path, quote = FALSE, row.names = TRUE)
+print(paste("  Saved to:", metadata_export_path))
+
+# --- 5. Save the complete Seurat object as RDS (for R-specific further analysis if needed) ---
+print("Saving complete Seurat object as RDS...")
+final_seurat_object_path <- file.path(seurat_output_data_dir, "pbmc10k_seurat_wnn_processed_final.rds")
+saveRDS(pbmc_seu, file = final_seurat_object_path)
+print(paste("  Saved to:", final_seurat_object_path))
+
+print("--- Seurat WNN: Data export for Benchmark complete ---")
+```
