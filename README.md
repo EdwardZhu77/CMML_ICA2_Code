@@ -30,7 +30,8 @@ CMML_ICA2_Code/
 │  
 └── Notebooks_and_Scripts/  
 │ ├── Data_Preprocessing.ipynb # Python notebook for data download, QC, and initial processing  
-│ ├── totalVI.ipynb # Python notebook for running totalVI  
+│ ├── totalVI.ipynb # Python notebook for running totalVI (Visual Issue because of format of outcome by Github)  
+│ ├── totalVI_without_outcome.ipynb # Python notebook for running totalVI (Pure code, without outcome)  
 │ ├── Seurat_WNN.Rmd # R Markdown script for running Seurat WNN  
 │ ├── PCA_Integration.ipynb # Python notebook for running the PCA-based integration  
 │ └── Benchmark_Analysis.ipynb  # Python notebook for benchmark analysis  
