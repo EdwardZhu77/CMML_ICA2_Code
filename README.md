@@ -67,7 +67,7 @@ CMML_ICA2_Code/
         *   Log1p-transforms and scales raw HVG RNA and protein counts.
         *   Concatenates scaled matrices and performs PCA (50 components).
         *   Performs UMAP embedding and Leiden clustering.
-        *   Outputs are saved in `Model_Outputs/pca_pbmc_model/`.
+        *   Outputs are saved in `Model_Outputs/PCA_pbmc_model/`.
 
 3.  **Benchmark Analysis (`Notebooks_and_Scripts/Benchmark_Analysis.ipynb`):**
     *   Loads the outputs from each integration method.
