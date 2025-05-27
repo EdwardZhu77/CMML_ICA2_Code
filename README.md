@@ -14,10 +14,10 @@ CMML_ICA2_Code/
 ├── Data_Preprocessing_Outputs/  
 │ ├── figures_pbmc10k_mtx/ # QC figures from preprocessing (before/after filtering)  
 │ └── data_pbmc10k_mtx/  
-│ ├── raw/ # Original downloaded 10x Genomics data and ground truth  
-│ └── processed/ # Data after unified Python preprocessing  
-│ ├── pbmc10k_cite_seq_processed_for_totalVI.h5ad # Processed AnnData/MuData for totalVI  
-│ └── pbmc10k_for_SeuratPCA_preprocessed/ # Data formatted for Seurat & PCA inputs  
+│ │ ├── raw/ # Original downloaded 10x Genomics data and ground truth  
+│ │ └── processed/ # Data after unified Python preprocessing  
+│ │ │ ├── pbmc10k_cite_seq_processed_for_totalVI.h5ad # Processed AnnData/MuData for totalVI  
+│ │ │ └── pbmc10k_for_SeuratPCA_preprocessed/ # Data formatted for Seurat & PCA inputs  
 │  
 ├── Model_Outputs/  
 │ ├── totalVI_pbmc_model/ # Results and key outputs from the totalVI model run  
