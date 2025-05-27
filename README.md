@@ -31,7 +31,7 @@ CMML_ICA2_Code/
 │ ├── totalVI.ipynb # Python notebook for running totalVI  
 │ ├── Seurat_WNN.Rmd # R Markdown script for running Seurat WNN  
 │ ├── PCA_Integration.ipynb # Python notebook for running the PCA-based integration  
-│ └── Benchmark_Analysis.ipynb  
+│ └── Benchmark_Analysis.ipynb  # Python notebook for benchmark analysis  
 
 
 **Note on Data:**
